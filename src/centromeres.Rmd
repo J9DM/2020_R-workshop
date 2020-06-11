@@ -1,0 +1,254 @@
+---
+title: "CENP-N and CENP-C intensity"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Load packages.
+Put dependencies at top of script to communicate to others the packages needed for the script to run.
+You might need to first install ggbeeswarm: install.packages("ggbeeswarm"). Never include install statements on code you will share with others.
+
+```{r }
+library(tidyverse)
+library(ggbeeswarm)
+```
+
+
+## Preliminary: getting data in working order.
+### Working with files and directories.
+R knows about files in your working directory. If your files are not in this directory, you'll have to tell R exactly how to find them. Always use relative (not absolute) paths to make it easier for others to reproduce your analysis.
+
+```{r}
+getwd()
+
+list.files(path = "../data/", pattern = ".txt", full.names = TRUE)
+
+file_in <- "../data/CENP_intensity_fig1.txt"
+```
+
+
+### Import data as a data frame
+R will make an educated guess at what kind of information is in each column. For greater control, it's possible to specify the column types.
+
+```{r import}
+df_cenp <- read_delim(file = file_in, delim = "\t", col_names = TRUE)
+```
+
+
+### Check that data meets your expectations.
+How many observations are there? Are there missing values?
+Were columns imported as the correct data type?
+
+```{r }
+df_cenp
+dim(df_cenp)
+typeof(df_cenp$count)
+```
+
+
+### Condition
+It would also be nice to have a "condition" variable. This information can be extracted from inFile using string manipulation.
+See R4DS Chapter 11: Strings with stringr.
+
+```{r}
+df_cenp <- df_cenp %>%
+  mutate(condition = str_split(inFile, "_", simplify = TRUE)[ ,3])
+```
+
+
+### Operation on rows
+In this data set, centromere intensity has already been background-subtracted. If this were not the case, we could perform the subtraction ourselves. Here, we'll recreate the `max-min` and the `area*mean-area*min` variables. Then check for equality.
+
+```{r}
+df_cenp <- df_cenp %>%
+  mutate(
+    `new_max-min` = max - min,
+    `new_area*mean-area*min` = area * mean - area * min
+  )
+
+sum(df_cenp[ , "max-min" ] == df_cenp[ , "new_max-min"])
+nrow(df_cenp)
+```
+
+
+### Selecting columns of interest
+If your data set contains columns that are not of interest to you, you can exclude them individually or select the columns you are interested in. The select() function also allows you to rearrange and rename columns in a data frame.
+
+```{r}
+colnames(df_cenp)
+
+df_cenp <- df_cenp %>%
+  select(- `x-corner`)
+
+df_cenp <- df_cenp %>%
+  select(condition, channel:cellID, centromere = count, intensity = `area*mean-area*min`)
+
+colnames(df_cenp)
+```
+
+
+### Tidy data
+See R4DS Chapter 12: Tidy data
+
+```{r}
+df_cenp <- df_cenp %>%
+  spread(key = channel, value = intensity)
+
+colnames(df_cenp)
+```
+
+
+### Categorical data: convert characters to factor
+Categorical variables are those that have a fixed and known set of possible values.
+What are the advantages of working with factors?
+See R4DS Chapter 15: Factors
+
+```{r factors}
+levels(df_cenp$condition)
+df_cenp$condition <- as.factor(df_cenp$condition)
+levels(df_cenp$condition)
+```
+
+
+## Working with the data.
+### Exploring the data set.
+How many cells does the data represent? How many centromeres per cell? What is the spread of the data?
+Exploratory data analysis (EDA) is an entire field in itself.
+See R4DS Chapter 7: Exploratory data analysis.
+
+```{r }
+summary(df_cenp[df_cenp$condition == "nowout", ])
+summary(df_cenp[df_cenp$condition == "wout20min", ])
+
+num_cents_by_cellID <- df_cenp %>%
+  group_by(condition, cellID) %>%
+  summarise(num_cents = n())
+
+num_cents_by_cellID
+
+num_cells_by_condition <- num_cents_by_cellID %>%
+  group_by(condition) %>%
+  summarise(num_cells = n())
+
+num_cells_by_condition
+```
+
+
+### Plot number of centromeres
+```{r}
+ggplot(data = num_cents_by_cellID, aes(x = condition, y = num_cents)) +
+  geom_beeswarm(aes(color = condition))
+```
+
+
+### Plot intensities
+```{r}
+ggplot(data = df_cenp, mapping = aes(x = condition, y = CENPN)) +
+  geom_boxplot()
+
+ggplot(data = df_cenp, mapping = aes(x = condition, y = CENPC)) +
+  geom_boxplot()
+
+ggplot(data = df_cenp, mapping = aes(x = condition, y = CENPC)) +
+  geom_violin(aes(color = condition, fill = condition))
+```
+
+
+### Scale intensity values.
+Scale so that average intensity values in the "nowout" condition is 1.
+
+```{r}
+intensity_by_condition <- df_cenp %>%
+  group_by(condition) %>%
+  summarise(
+    num_cents = n(),
+    cenpn_mean = mean(CENPN),
+    cenpn_sd = sd(CENPN),
+    cenpc_mean = mean(CENPC),    
+    cenpc_sd = sd(CENPC),    
+    )
+
+df_cenp <- df_cenp %>%
+  mutate(
+    cenpn_norm = CENPN / (intensity_by_condition[intensity_by_condition$condition == "nowout", ]$cenpn_mean),
+    cenpc_norm = CENPC / (intensity_by_condition[intensity_by_condition$condition == "nowout", ]$cenpc_mean)
+    )
+
+# It's good to double-check.
+ 5210/20079 # CENPN
+21510/24403 # CENPC
+```
+
+
+### Summarize scaled intensity values.
+Calculate 95% confidence interval from t-distribution.
+See https://www.cyclismo.org/tutorial/R/confidence.html
+  error <- qt(0.975,df=n-1)*stdev/sqrt(n)
+
+```{r}
+scaled_int_by_condition <- df_cenp %>%
+  group_by(condition) %>%
+  summarise(
+    num_cents = n(),
+    cenpn_mean = mean(cenpn_norm),
+    cenpn_sd = sd(cenpn_norm),
+    cenpc_mean = mean(cenpc_norm),
+    cenpc_sd = sd(cenpc_norm)
+    ) %>%
+  mutate(
+    cenpn_error = qt(0.975, df = num_cents-1) * cenpn_sd/sqrt(num_cents),
+    cenpn_left =  cenpn_mean - cenpn_error,
+    cenpn_right = cenpn_mean + cenpn_error,
+    cenpc_error = qt(0.975, df = num_cents-1) * cenpc_sd/sqrt(num_cents),
+    cenpc_left =  cenpc_mean - cenpc_error,
+    cenpc_right = cenpc_mean + cenpc_error
+  )
+```
+
+
+### Plot scaled intensities
+
+```{r}
+p_n <- ggplot(data = scaled_int_by_condition) +
+  geom_bar(aes(x = condition, y = cenpn_mean), stat = "identity", width = 0.75, colour = "black", fill = "black") +
+  geom_errorbar(aes(x = condition, ymin = cenpn_left, ymax = cenpn_right), width = 0.4, size = 1) +
+  ylab("Centromeric CENP-N intensity (normalized)")
+p_n
+
+p_c <- ggplot(data = scaled_int_by_condition) +
+  geom_bar(aes(x = condition, y = cenpc_mean), stat = "identity", width = 0.75, colour = "black", fill = "black") +
+  geom_errorbar(aes(x = condition, ymin = cenpc_left, ymax = cenpc_right), width = 0.4, size = 1) +
+  ylab("Centromeric CENP-C intensity (normalized)")
+p_c
+```
+
+
+### Writing data to file
+
+```{r}
+file_out <- "../results/processed_CENP_intensity_fig1.txt"
+write_tsv(df_cenp, file_out)
+```
+
+
+### Print plot to pdf
+Open a pdf, create the plot, close the pdf. Lots of customizations (size, resolution) are possible.
+
+```{r}
+pdf("../results/rplot.pdf") 
+p_n
+dev.off() 
+```
+
+
+### Save as png
+Open a png, create the plot, close the png. Lots of customizations (size, resolution) are possible.
+
+```{r}
+png("../results/rplot.png", res = 150)
+p_n
+dev.off()
+```
