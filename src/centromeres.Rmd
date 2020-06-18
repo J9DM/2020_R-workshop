@@ -1,6 +1,8 @@
 ---
 title: "CENP-N and CENP-C intensity"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -81,9 +83,6 @@ If your data set contains columns that are not of interest to you, you can exclu
 colnames(df_cenp)
 
 df_cenp <- df_cenp %>%
-  select(- `x-corner`)
-
-df_cenp <- df_cenp %>%
   select(condition, channel:cellID, centromere = count, intensity = `area*mean-area*min`)
 
 colnames(df_cenp)
@@ -122,6 +121,11 @@ See R4DS Chapter 7: Exploratory data analysis.
 ```{r }
 summary(df_cenp[df_cenp$condition == "nowout", ])
 summary(df_cenp[df_cenp$condition == "wout20min", ])
+
+# equivalent to
+df_cenp %>%
+  filter(condition == "wout20min") %>%
+  summary()
 
 num_cents_by_cellID <- df_cenp %>%
   group_by(condition, cellID) %>%
@@ -212,43 +216,45 @@ scaled_int_by_condition <- df_cenp %>%
 ### Plot scaled intensities
 
 ```{r}
-p_n <- ggplot(data = scaled_int_by_condition) +
+plot_CENPN <- ggplot(data = scaled_int_by_condition) +
   geom_bar(aes(x = condition, y = cenpn_mean), stat = "identity", width = 0.75, colour = "black", fill = "black") +
   geom_errorbar(aes(x = condition, ymin = cenpn_left, ymax = cenpn_right), width = 0.4, size = 1) +
   ylab("Centromeric CENP-N intensity (normalized)")
-p_n
+plot_CENPN
 
-p_c <- ggplot(data = scaled_int_by_condition) +
+plot_CENPC <- ggplot(data = scaled_int_by_condition) +
   geom_bar(aes(x = condition, y = cenpc_mean), stat = "identity", width = 0.75, colour = "black", fill = "black") +
   geom_errorbar(aes(x = condition, ymin = cenpc_left, ymax = cenpc_right), width = 0.4, size = 1) +
   ylab("Centromeric CENP-C intensity (normalized)")
-p_c
+plot_CENPC
 ```
 
 
 ### Writing data to file
 
 ```{r}
-file_out <- "../results/processed_CENP_intensity_fig1.txt"
+path_out <- "../results/"
+
+file_stub <- str_split(file_in, "/", simplify = TRUE)[[3]]
+file_out <- str_c(path_out, "processed_", file_stub)
+file_out
+
 write_tsv(df_cenp, file_out)
 ```
 
 
 ### Print plot to pdf
-Open a pdf, create the plot, close the pdf. Lots of customizations (size, resolution) are possible.
+Lots of customizations (size, resolution) are possible.
 
 ```{r}
-pdf("../results/rplot.pdf") 
-p_n
-dev.off() 
+
+ggsave("../results/ggsave.pdf", plot = plot_CENPC)
 ```
 
 
-### Save as png
-Open a png, create the plot, close the png. Lots of customizations (size, resolution) are possible.
+### Or save as png
+Lots of customizations (size, resolution) are possible.
 
 ```{r}
-png("../results/rplot.png", res = 150)
-p_n
-dev.off()
+ggsave("../results/ggsave.png", plot = plot_CENPN)
 ```

@@ -74,6 +74,7 @@ nrow(df_iris)
 dim(df_iris)
 # overall structure
 str(df_iris)
+glimpse(df_iris)
 summary(df_iris)
 
 
