@@ -1,0 +1,205 @@
+---
+title: "Processing text file output from CRaQ program"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(stringi)
+```
+
+### Overview
+
+I want to import data from another program into R as a data frame. Unfortunately, the text file output is not "rectangular" and can't be read into R as a data frame using readr or even base R functions.
+
+You could approach this problem in LOTS of different ways. Undoubtedly, some of those ways might be simpler than the approach I outline here. I've tried to bring together a number of concepts we've discussed during the workshop - subsetting, writing functions, string manipulations, dplyr, for loops, etc.
+
+I've preserved the "exploratory" nature of the Markdown file so that you could see some of the thinking and development of the script. At the end of the Markdown are suggestions for making the script more polished.
+
+### Input files
+
+These text files are the output of another program (CRaQ).
+
+```{r}
+files <- list.files(path = "../data/", pattern = "^ch.*txt")    # regexps
+files
+```
+
+Unfortunately, the files are not rectangular, and the readr functions we learned about aren't suitable for working with it. Let's explore other options.
+
+```{r}
+ix_file <- 1  # first file
+file_path <- str_c("../data/", files[[ix_file]])
+text <- stri_read_lines(file_path)
+
+# The file is read into R as a character vector.
+str(text)
+head(text)
+```
+
+### Parsing the text file: detect delimiters
+
+From inspection of the file, "==" is used as a delimiter for output of different experiments.
+
+Note that which() gives the TRUE indices of a logical object.
+
+```{r}
+# Detect delimiter
+loc_delim <- which(str_detect(text, fixed(pattern = "==")))
+loc_delim
+
+# Start positions for data to go into a data frame
+loc_delim + 2
+
+# End positions
+loc_delim[-1] -2
+
+# Still need the last end position. It looks like it's the last element of the vector.
+tail(text, n = 1)
+length(text) # use as index
+text[length(text)]
+
+c((loc_delim[-1] -2), length(text)) # end positions
+```
+We'll also want to know the variable names. Any line below the delimiter will work. For now we'll leave it as a single string.
+
+```{r}
+text[loc_delim[1] + 1]
+```
+
+Let's turn these into functions we can use for other files in this dataset.
+
+```{r}
+find_delim <- function(text) which(str_detect(text, fixed(pattern = "==")))
+
+find_starts <- function(loc_delim) loc_delim + 2
+
+find_ends <- function(loc_delim, text) {
+  c((loc_delim[-1] -2), length(text))
+}
+
+get_variables <- function(loc_delim, text) text[loc_delim[1] + 1]
+```
+
+```{r}
+loc_delim <- find_delim(text)
+loc_starts <- find_starts(loc_delim)
+loc_ends <- find_ends(loc_delim, text)
+variables <- get_variables(loc_delim, text)
+```
+
+###  Parsing an experiment within the text file: data frame
+
+Now we know where our data is, we can think about converting it into a data frame.
+
+Let's try creating a data frame using just the first experiment (of the first file).
+
+```{r}
+ix_exp <- 1 # first experiment
+
+df_1col <- tibble(vars = text[(loc_starts[ix_exp]):loc_ends[ix_exp]])
+df_1col
+df_10col <- df_1col %>% 
+  separate(vars, str_split(variables, pattern = "\t", simplify = TRUE), sep = "\t", convert = TRUE)
+df_10col # looks good
+```
+
+Again, we'll write a function. This can help us reduce intermediate objects and conceptually separate out the idea from the mechanics.
+
+```{r}
+text_to_df <- function(text, ix_exp, loc_starts, loc_ends, variables) {
+  tibble(vars = text[(loc_starts[ix_exp]):loc_ends[ix_exp]]) %>% 
+    separate(vars, 
+             str_split(variables, pattern = "\t", simplify = TRUE), sep = "\t", convert = TRUE)
+}
+
+df_10col <- text_to_df(text, ix_exp, loc_starts, loc_ends, variables)
+```
+
+I'd like to associate additional metadata with this data frame. I'll add the metadata as new columns.
+
+```{r}
+# Create a channel look-up using a named list.
+ch_LU <- list(ch1 = "CENPN", ch2 = "CENPC")
+
+ch_LU[["ch1"]]
+str_sub(files[ix_file], 1, 3)
+
+# metadata
+channel <- ch_LU[[str_sub(files[ix_file], 1, 3)]]
+inFile <- str_sub(files[ix_file], 1, -5)
+cellID <- text[loc_delim[ix_exp]] # NOT ix_file
+
+# "Bind" columns to create an expanded data frame.
+as_tibble(cbind(inFile = inFile, channel = channel, cellID = cellID, df_10col))
+```
+
+Create a function.
+
+```{r}
+add_meta <- function(df, ch_LU, files, text, ix_file, ix_exp, loc_delim) {
+  channel <- ch_LU[[str_sub(files[ix_file], 1, 3)]]
+  inFile <- str_sub(files[ix_file], 1, -5)
+  cellID <- text[loc_delim[ix_exp]] # NOT ix_file
+  as_tibble(cbind(inFile = inFile, channel = channel, cellID = cellID, df_10col))
+}
+
+df_13col <- add_meta(df_10col, ch_LU, files, text, ix_file, ix_exp, loc_delim)
+```
+
+### Scale up to all experiments in all files.
+
+Processing looks good for experiment number one.
+
+Now I need to apply to all experiments in all files. I'll use a for loop.
+
+```{r}
+ch_LU <- list(ch1 = "CENPN", ch2 = "CENPC")
+
+files <- list.files(path = "../data/", pattern = "^ch.*txt")
+num_files <- length(files)
+
+output <- vector("list", num_files)           # preallocate list for outer loop (over files)
+for (ix_file in seq_along(files)) {           # outer loop
+  file_path <- str_c("../data/", files[[ix_file]])
+  text <- stri_read_lines(file_path)
+  
+  loc_delim <- find_delim(text)
+  loc_starts <- find_starts(loc_delim)
+  loc_ends <- find_ends(loc_delim, text)
+  variables <- get_variables(loc_delim, text)
+  
+  num_exp <- length(loc_delim)
+  
+  experiments <- vector("list", num_exp)      # preallocate list for inner loop (over experiments)
+  for (ix_exp in seq_along(loc_delim)) {      # inner loop
+    df_10col <- text_to_df(text, ix_exp, loc_starts, loc_ends, variables)
+    df_13col <- add_meta(df_10col, ch_LU, files, text, ix_file, ix_exp, loc_delim)
+    experiments[[ix_exp]] <- df_13col
+  }
+  output[[ix_file]] <- bind_rows(experiments)
+}
+df_out <- bind_rows(output)
+df_out
+```
+
+### Saving the processed output.
+
+To make the output of this script compatible with the centromeres.Rmd file, I'll save the data frame as a text file.
+
+```{r}
+# I don't want to overwrite the txt file so I'll give it a different name, but the file should be identical to ../data/CENP_intensity_fig1.txt (except that there's an intermediate step that involves filtering ROIs known not to contain centromeres- not included here).
+file_out <- "../results/new_CENP_intensity_fig1.txt"
+write_delim(df_out, file_out, delim = "\t")
+```
+
+
+### Final comments
+
+I could continue to polish the script up a bit. There are a lot of arguments to the text_to_df() and add_meta() functions. I could simplify that a bit by combining the loc_<positions> variables into a list, for example. But this works, and is general enough to apply to other text files generated by the CRaQ program, assuming that the file names are specified as above. We might need to supply a different channel look-up.
+
+Also, functions are often extracted out, put together in a separate file, and "sourced" so they can be accessed. It's also a good idea to provide some documentation for your functions. Also, it's never too early to think about version control.

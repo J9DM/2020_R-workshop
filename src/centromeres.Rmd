@@ -56,8 +56,15 @@ It would also be nice to have a "condition" variable. This information can be ex
 See R4DS Chapter 11: Strings with stringr.
 
 ```{r}
+df_cenp$inFile[[1]]
+
+# a character matrix, access with two indices [[1, 3]], double brackets to  make clear returning a single value
+str(str_split(df_cenp$inFile[[1]], "_", simplify = TRUE)) 
+
 df_cenp <- df_cenp %>%
-  mutate(condition = str_split(inFile, "_", simplify = TRUE)[ ,3])
+  mutate(condition = str_split(inFile, "_", simplify = TRUE)[[1, 3]]) # use 2 indices
+
+df_cenp$condition[[1]]
 ```
 
 

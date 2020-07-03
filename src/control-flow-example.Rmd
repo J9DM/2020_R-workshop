@@ -1,0 +1,93 @@
+---
+title: "Control flow"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+```
+
+### A simple for loop, with and without assignment
+
+```{r}
+feet <- c("obj_1" = 1.6, "obj_2" = 3, "obj_3" = 8)
+feet
+
+# loop over elements
+# no pre-allocation because just side effect
+for (f in feet){
+  print(str_c(f, " feet = ", (f * 12), " inches"))
+}
+
+# loop over names, again just side effect
+for (nm in names(feet)){
+  inches <- feet[[nm]] * 12
+  print(str_c(nm, " is ", inches , " inches long"))
+}
+
+# note that inches is now an object in the environment
+ls()
+
+inches <- 10
+inches
+
+for (nm in names(feet)){
+  inches <- feet[[nm]] * 12
+  print(str_c(nm, " is ", inches , " inches long"))
+}
+
+# the assignment within the for loop creates a new binding!
+inches
+
+# loop over numerical index and store the results
+inches <- vector("double", length(feet))
+for (i in seq_along(feet)) {
+  inches[[i]] <- feet[[i]] * 12
+}
+inches
+
+# Of course R is vectorized, and for loops are frequently unnecessary!
+feet * 12
+```
+
+### A simple for loop with conditional
+
+```{r}
+# side effect, no pre-allocation
+for (i in seq_along(feet)) {
+  nm <- names(feet)[[i]]
+  inch <- feet[[i]] * 12
+  if (inch < 20) {
+    print(str_c(nm, " is less than 20 inches long"))
+  } else if (inch < 40) {
+    print(str_c(nm, " is less than 40 inches long"))
+  } else
+    print(str_c(nm, " is greater than or equal to 40 inches"))
+}
+```
+
+### A simple while loop
+
+From https://r4ds.had.co.nz/iteration.html#unknown-sequence-length
+
+```{r}
+flip <- function() sample(c("T", "H"), 1)
+
+flips <- 0
+nheads <- 0
+
+while (nheads < 3) {
+  if (flip() == "H") {
+    nheads <- nheads + 1
+  } else {
+    nheads <- 0
+  }
+  flips <- flips + 1
+}
+flips
+```
+

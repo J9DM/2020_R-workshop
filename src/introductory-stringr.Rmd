@@ -1,0 +1,232 @@
+---
+title: "String manipulation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following is a very incomplete list of tasks you can accomplish with string manipulation in R. For more, see:
+
+https://rstudio-pubs-static.s3.amazonaws.com/347744_c25378610af54ff5a9b5fc0f0bd9b587.html
+
+```{r, message = FALSE}
+library(tidyverse)
+```
+
+### Concatenate strings
+
+paste() and paste0() are functions in base R that concatenate vectors (after first converting to character, if necessary).
+
+stringr has a similar function, str_c(), with the advantage that missing values give missing outputs.
+
+These functions are useful for user interfacing.
+
+```{r}
+n <- 3
+paste("Enter file number ", n, ", please.", sep = "")
+paste0("Enter file number ", n, ", please.")
+str_c("Enter file number ", n, ", please.")
+```
+
+One use case for paste() and str_c() is to build up a file path from a vector of sub-directory names.
+
+```{r}
+dir_vector <- c("home", "Documents", "2020_R-workshop", "data")
+str_c(dir_vector, collapse = "/")
+```
+
+### Extracting substrings
+
+Again, this could be useful for working with filenames. For example, you can strip the extension from a filename. Negative intergers count from the end.
+
+```{r}
+filename <- "name.ext"
+str_sub(filename, start = 1, end = -5)
+str_sub(filename, start = -3, end = -1)
+```
+
+### Pattern matching
+
+These stringr functions all take a pattern argument:
+
+    str_detect()
+    str_subset()
+    str_count()
+    str_replace()
+
+Maybe you have a column in a data frame where information about the experiment is embedded in a string.
+
+I'll create one here as an example. Tribble is a convenient function for manually creating a data frame (tibble).
+
+```{r}
+exp_info <- tribble(
+  ~info,            ~val,
+  "control_01_M",   110,
+  "control_02_F",   125,
+  "case_01_M",      130,
+  "case_02_F",      105
+)
+exp_info
+
+# str_subset() returns strings that match the pattern
+exp_info$info %>%
+  str_subset("con") # partial matching
+
+# str_detect() returns a logical vector the same length as the original
+exp_info$info %>%
+  str_detect("con")
+
+# to return the entire row, use dplyr's filter()
+exp_info %>%
+  filter(str_detect(info, "con")) # filter uses the logical vector to subset the rows
+```
+
+### Splitting strings
+
+The info column in the exp_info data frame contains three pieces of information, separated by an underscore:
+
+experiment_number_sex
+
+We can split this string into substrings.
+
+```{r}
+string <- exp_info$info[[1]]
+string
+
+# By default, str_split() returns a list.
+str_split(string, "_")
+str(str_split(string, "_"))
+
+# We can simplify the list to a character matrix-
+str_split(string, "_", simplify = TRUE)
+str(str_split(string, "_", simplify = TRUE))
+
+# or use unlist to produce a character vector-
+unlist(str_split(string, "_"))
+str(unlist(str_split(string, "_")))
+
+# and access individual elements.
+str_split(string, "_", simplify = TRUE)[[1]]
+str_split(string, "_", simplify = TRUE)[[2]] # a character
+as.integer(str_split(string, "_", simplify = TRUE)[[2]])
+```
+
+Use the separate() function in tidyr to split a single character column into multiple columns. It works with either regular expressions or a vector of character positions.The default is to split by any non-alphanumeric value (using the regular expression: sep = "[^[:alnum:]]+"). Use convert = TRUE to convert number from a character to an integer.
+
+```{r}
+exp_info %>% 
+  separate(info, c("experiment", "number", "sex"), convert = TRUE)
+```
+
+### Matching patterns with regular expressions
+
+Regular expressions (regexps) are a very concise way to describe patterns in strings. Regular expressions is a whole topic in itself! Here, we'll touch on the very basics. Also check out:
+
+https://r4ds.had.co.nz/strings.html#matching-patterns-with-regular-expressions
+
+https://rstudio-pubs-static.s3.amazonaws.com/347744_c25378610af54ff5a9b5fc0f0bd9b587.html#regular-expressions
+
+The following very helpful tutorial was written for python, but you can apply the concepts to regular expressions in R. It has lots of biologically-relevant examples. I highly recommend taking a look at it when you think you want to learn more about regexps.
+
+https://pythonforbiologists.com/regular-expressions
+
+##### Basic matches
+
+str_view() provides a convenient way to show regular expression matches. I needed to install "htmlwidgets": install.packages("htmlwidgets").
+
+```{r}
+# Exact matching
+x <- exp_info$info
+x
+str_view(x, "con")
+
+# A period (.) matches any character.
+y <- c("GCACATGGACCAC", "GCACATGGTCCAC", "GCACATGGGCCAC", "GCACATGGCCCAC", "GCACATGGNCCAC")
+str_view(y, "GG.CC")
+
+# To match a period, you have to escape its special behavior with a backslash (\).
+str_view(filename, "\\.")
+
+# Match a group of characters
+str_view(y, "GG(A|T)CC") # alternation, (A|T) matches either A or T
+str_view(y, "GG[ATGC]CC") # character group within []
+str_view(y, "GG[^N]CC") # [^] match any character except those within group
+```
+
+##### Anchors
+
+"Anchor" a regular expression to match the start or end of a string.
+
+Anchoring to the start of a string (^) can be useful in identifying common headers.
+
+```{r}
+fasta_lines <- c("> my_DNA_seq", "ATGCCG", "> my_RNA_seq", "AUGCCGAAAAAAA")
+str_view(fasta_lines, "^>") # anchor to start
+str_view(fasta_lines, "A$") # anchor to end
+```
+
+##### Repetition
+
+Control how many times a pattern matches:
+
+    ?: 0 or 1
+    +: 1 or more
+    *: 0 or more
+
+```{r}
+str_view(fasta_lines, "A+$")
+```
+
+You can also specify the number of matches precisely:
+
+    {n}: exactly n;
+    {n,}: n or more;
+    {,m}: at most m;
+    {n,m}: between n and m.
+
+Note that these matches are “greedy” by default (they'll match the longest string possible). To make them “lazy” (matching the shortest string possible) put a ? after them.
+
+```{r}
+str_view(fasta_lines, "A{5,}")
+```
+
+##### Grouping and backreferences
+
+These are more advanced, and you can check them out here.
+
+https://r4ds.had.co.nz/strings.html#grouping-and-backreferences
+
+##### Usage
+
+How do you actually make use of regexps in your code? Regexps can be used with other stringr functions. The example below uses regexps in the function str_detect().
+
+```{r}
+# Subset a vector
+str_detect(fasta_lines, "A{5,}") # returns a logical vector, can be used for indexing.
+fasta_lines[str_detect(fasta_lines, "A{5,}")]
+
+# or a data frame.
+exp_info %>% 
+  filter(str_detect(info, "M$"))
+```
+
+##### Exercises
+
+From https://pythonforbiologists.com/regular-expressions
+
+Write a program that will print only the accession names that satisfy the following criteria – treat each criterion separately:
+
+    contain the number 5
+    contain the letter d or e
+    contain the letters d and e in that order
+    contain the letters d and e in that order with a single letter between them
+    contain both the letters d and e in any order
+    start with x or y
+    start with x or y and end with e
+    contain three or more digits in a row
+    end with d followed by either a, r or p
+
+
+

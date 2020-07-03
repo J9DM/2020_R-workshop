@@ -1,0 +1,139 @@
+---
+title: "Processing text file output from CRaQ program"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(stringi)
+```
+
+### Overview
+
+For details of how this script works, see text-processing.Rmd. Here, I want to focus on iteration.
+
+Briefly, I want to import data from another program into R as a data frame. Unfortunately, the text file output is not "rectangular" and can't be read into R as a data frame using readr or even base R functions. Together with the functions defined elsewhere, this script will "parse" the irregular text files.
+
+### Functions
+
+You'll need to source the functions for this file using text-processing-functions.R.
+
+```{r}
+source("text-processing-functions.R")
+```
+
+### A single file
+
+```{r}
+ch_LU <- list(ch1 = "CENPN", ch2 = "CENPC") # a lookup for my channels
+```
+
+There are four files.
+
+```{r}
+files <- list.files(path = "../data/", pattern = "^ch.*txt") # regexp
+length(files)
+```
+
+File structure
+
+```{r}
+ix_file <- 1  # first file
+# build the path, alternatively could specify full.names = TRUE in list.files()
+file_path <- str_c("../data/", files[[ix_file]]) 
+
+text <- stri_read_lines(file_path)
+
+# The file is read into R as a character vector.
+str(text)
+head(text)
+```
+In this file, "==" is used as a delimiter for output of different experiments.
+
+The file is structured as follows:
+
+    * header
+    * blank line
+    * delimiter, "=="
+    * column names
+    * observation start
+    * observations
+    * observation end
+    * blank line
+    * ...
+    
+
+```{r}
+loc_delim <- find_delim(text) # finds the locations of all delimiters in the text file
+length(loc_delim)
+```
+There are 18 experiments in this file.
+
+For convenience, I also find the locations of first and last observations that define each experiment.
+
+```{r}
+loc_starts <- find_starts(loc_delim)
+loc_ends <- find_ends(loc_delim, text)
+variables <- get_variables(loc_delim, text)
+variables # a string of the column names
+```
+
+### A single experiment within the file
+
+Parse the lines of text for the first experiment into a data frame.
+
+```{r}
+ix_exp <- 1 # first experiment
+df_10col <- text_to_df(text, ix_exp, loc_starts, loc_ends, variables)
+
+df_10col
+```
+
+And associate additional metadata with this data frame. I'll add the metadata as new columns.
+
+```{r}
+df_13col <- add_meta(df_10col, ch_LU, files, text, ix_file, ix_exp, loc_delim)
+
+df_13col
+```
+
+### Scale up to all experiments in all files
+
+Processing looks good for experiment number one.
+
+Now I need to apply to all experiments in all files. I'll use an outer and inner for loop.
+
+```{r}
+ch_LU <- list(ch1 = "CENPN", ch2 = "CENPC")
+
+files <- list.files(path = "../data/", pattern = "^ch.*txt")
+num_files <- length(files)
+
+output <- vector("list", num_files)           # preallocate list for outer loop (over files)
+for (ix_file in seq_along(files)) {           # outer loop
+  file_path <- str_c("../data/", files[[ix_file]])
+  text <- stri_read_lines(file_path)
+  
+  loc_delim <- find_delim(text)
+  loc_starts <- find_starts(loc_delim)
+  loc_ends <- find_ends(loc_delim, text)
+  variables <- get_variables(loc_delim, text)
+  
+  num_exp <- length(loc_delim)
+  
+  experiments <- vector("list", num_exp)      # preallocate list for inner loop (over experiments)
+  for (ix_exp in seq_along(loc_delim)) {      # inner loop
+    df_10col <- text_to_df(text, ix_exp, loc_starts, loc_ends, variables)
+    df_13col <- add_meta(df_10col, ch_LU, files, text, ix_file, ix_exp, loc_delim)
+    experiments[[ix_exp]] <- df_13col
+  }
+  output[[ix_file]] <- bind_rows(experiments)
+}
+df_out <- bind_rows(output)
+
+df_out
+```

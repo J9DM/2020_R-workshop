@@ -1,0 +1,311 @@
+---
+title: "ggplot2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### This is a markdown file!
+
+Markdown files are great for: communication, collaboration, as a working environment. There are dozens of output formats to choose from, including pdfs and even slideshows. Here, I'm using html.
+
+R Markdown allows you to combine blocks of text (like here) with code chunks (see below) in one document. Code chunks need to be surrounded by delimiters using backticks. See:
+
+https://r4ds.had.co.nz/r-markdown.html
+
+### Dependencies
+
+```{r}
+library(tidyverse)
+```
+
+### Iris data set
+
+```{r}
+df_iris <- as_tibble(iris)
+str(df_iris)
+```
+
+### Create a scatterplot
+
+Here, we'll plot "Species", a categorical variable, on the x-axis and "Petal.Length", a continuous variable on the y-axis using the ggplot2 package.
+
+The first argument to ggplot() is a data frame, as we saw with the dplyr functions.
+
+Additionally, we need to define a mapping from a variable in the data frame to an "aesthetic", a visual property of the data (e.g. size, shape, color, even position).
+
+We also need to specify a "geom_function", some way to visually display the data (e.g. point, line, bar).
+
+ggplot2 predates the pipe operator (%>%) we used with dplyr. Use a "+" instead.
+
+```{r}
+ggplot(data = df_iris) +
+  geom_point(mapping = aes(x = Species,
+                           y = Petal.Length))
+```
+
+Overfitting is a problem here. We expect 50 observations per species.
+
+```{r}
+df_iris %>%
+  group_by(Species) %>% 
+  summarise(n = n())
+```
+
+There's no single solution to overplotting caused by discreteness: alpha controls the transparency, jitter adds a small amount of random variation to position. I'll demonstrate these here, but other options exist as well.
+
+Use set.seed() for reproducibility. What do you think it does? Run the block of code below again. The graph should look identical. Introduce a new unique random seed with set.seed(Sys.time()) by uncommenting the line of code and run again.
+
+```{r}
+set.seed(0)
+# set.seed(Sys.time())
+ggplot(data = df_iris) +
+  geom_point(mapping = aes(x = Species,
+                            y = Petal.Length),
+             alpha = 0.6,
+             position = "jitter")
+```
+
+Equivalently, geom_jitter is a shortcut for geom_point(position = "jitter"). 
+
+```{r}
+ggplot(data = df_iris) +
+  geom_jitter(mapping = aes(x = Species,
+                            y = Petal.Length),
+              alpha = 0.6)
+```
+
+Again, note that jitter adds a small position adjustment to data! This is fine for categorical data, but might be undesired for continuous data. If you want to add only horizontal jitter, specify height = 0. Likewise, if you want only vertical jitter, specify width = 0. In this case, the difference is not noticeable.
+
+```{r}
+ggplot(data = df_iris) +
+  geom_jitter(mapping = aes(x = Species,
+                            y = Petal.Length),
+              alpha = 0.6,
+              height = 0)
+```     
+
+For a simple template for generating graphs see:
+
+https://r4ds.had.co.nz/data-visualisation.html
+
+
+### Other useful aesthetics and arguments
+
+Each geom function will have arguments that can be used to modify its output. Check out the documentation for the geom function you'd like to use.
+
+```{r}
+?geom_jitter
+
+ggplot(data = df_iris) +
+  geom_jitter(mapping = aes(x = Species,
+                            y = Petal.Length,
+                            color = Species),
+              width = 0.2,
+              size = 4,
+              alpha = 0.6)
+```
+
+Where an aesthetic is defined matters. Note the differences in the code and resulting graph below. The aesthetic mapping now includes "size", and the "color" aesthetic is set by name as an argument of the geom function (i.e. outside of aes()). When might you want to define an aesthetic inside vs. outside aes()?
+
+```{r}
+ggplot(data = df_iris) +
+  geom_jitter(mapping = aes(x = Species,
+                            y = Petal.Length,
+                            size = Species),
+              color = "blue",
+              width = 0.2,
+              alpha = 0.6)
+```
+
+### Add additional layers
+
+Sometimes it's useful to assign a ggplot object to a variable. We can then add layers as we go. Note as well that we can pipe a dataframe into ggplot rather than specify it within the data argument.
+
+What's the difference between color and fill?
+https://methodenlehre.github.io/SGSCLM-R-course/graphics-with-ggplot2.html#step-2-aesthetic-mappings
+
+What happens if you move the "+" from the beginning to the end of the line?
+
+What happens if you change the order of the layers?
+
+```{r}
+p <- df_iris %>% 
+  ggplot()
+
+p +
+  geom_violin(mapping = aes(x = Species,
+                            y = Petal.Length,
+                            fill = Species)) +
+  geom_jitter(mapping = aes(x = Species,
+                            y = Petal.Length),
+              width = 0.1,
+              size = 1,
+              alpha = 0.6)
+```
+
+### Where to define the aesthetic mapping?
+
+In the case above, we're repeating ourselves by defining the x and y aesthetics for each geom function. A better solution is to define the common mappings in the call to ggplot(). Then trying out different geoms is simple.
+
+```{r}
+p2 <- df_iris %>% 
+  ggplot(mapping = aes(x = Species,
+                       y = Petal.Length))
+
+p2 +
+  geom_boxplot()
+```
+
+Width, size, and alpha aesthetics are set by name as an argument in the call to geom_jitter() while the fill aesthetic is defined in the call to geom_violin() within aes(). How will that affect the appearance of the graph?
+
+```{r}
+my_plot <- p2 +
+  geom_violin(mapping = aes(fill = Species)) +
+  geom_jitter(width = 0.1,
+              size = 1,
+              alpha = 0.6) +
+  ylab("Petal length") +
+  theme_classic()
+```
+
+Why did the plot not print?
+
+```{r}
+my_plot
+```
+
+
+### Saving
+
+Where will ggsave() save this file? What file format will it use? How do you adjust image size and resolution? Where can you go for help?
+
+```{r}
+ggsave(filename = "my_plot.png",
+       plot = my_plot)
+```
+
+
+### Automating exploratory plots
+
+We can define functions so that we can quickly look at other variables using the same graph.
+
+Here, we use the .data "pronoun" to access (using double brackets, [[]]) the relevant column name, as specified by a character vector (e.g. x = "Species").
+
+https://ggplot2.tidyverse.org/articles/ggplot2-in-packages.html
+
+This example is, admittedly, a bit complicated. Regardless, hopefully you'll be able to see how you might apply these ideas to a related question. With enough background knowledge, you'll be able to use google to identify how other people have solved problems related to yours. That's what I've done here:
+
+https://aosmith.rbind.io/2018/08/20/automating-exploratory-plots/
+
+Define a function:
+
+```{r}
+# Reminder: you might not want to use jitter (a position adjustment) with continuous data.
+create_scatterplot <- function(x, y, color) {
+  ggplot(data = df_iris) +
+    geom_jitter(mapping = aes(x = .data[[x]],
+                              y = .data[[y]],
+                              color = .data[[color]]),
+                width = 0.2,
+                size = 4,
+                alpha = 0.6)
+}
+```
+
+Now you can call that function as you would with built-in functions.
+
+```{r}
+create_scatterplot(x = "Species", y = "Petal.Width", color = "Species")
+create_scatterplot(x = "Sepal.Length", y = "Sepal.Width", color = "Species")
+```
+
+We've been explicitly naming arguments to our function calls. One advantage to naming arguments is clarity. But you should be aware that if arguments aren't named, R will use the order of the arguments according to the function definition. create_scatterplot accepts 3 arguments: x, y, and color. How will these graphs appear (i.e. which variables will be on the x- and y-axes)? Uncomment to find out.
+
+```{r}
+#create_scatterplot("Species", "Petal.Width", "Species")
+#create_scatterplot(y = "Petal.Width", x = "Species", "Species")
+#create_scatterplot("Petal.Width", "Species", "Species")
+```
+
+
+We can iterate through variables with a for loop. Here, I'm iterating over names of a data frame, but there are other methods of iteration as well.
+
+https://r4ds.had.co.nz/iteration.html
+
+```{r}
+for (nm in names(df_iris)) {
+  print(nm)
+}
+```
+
+```{r}
+for (nm in names(df_iris)) {
+  q <- create_scatterplot(x = "Species", y = nm, color = "Species")
+  print(q)
+}
+```
+
+The map() function from the purrr package within the tidyverse provides a more advanced form of iteration that you can explore when you become more comfortable with the idea of iteration. I've provided an example below, but won't go over it in this workshop. Check out the resources for more details.
+
+https://r4ds.had.co.nz/iteration.html#the-map-functions
+https://aosmith.rbind.io/2018/08/20/automating-exploratory-plots/#looping-through-one-vector-of-variables
+
+```{r}
+expl <- names(df_iris)
+my_plots <- map(expl, ~create_scatterplot(x = "Species", y = .x, color = "Species") )
+# my_plots
+```
+
+And also check out faceting below.
+
+
+### Other plots
+
+This example, with a continuous variable and a categorical variable, just scratches the surface of the kinds of relationships you can explore using graphs. Other geoms are more appropriate with other kinds of data. How do you know what <GEOM_FUNCTIONS> are available? Take a look here to get started:
+_https://ggplot2.tidyverse.org/_
+
+
+### Interested in further customizations and annotations?
+
+Interested in further customizations and annotations?
+
+http://r-statistics.co/Complete-Ggplot2-Tutorial-Part1-With-R-Code.html#4.%20Changing%20the%20title%20and%20axis%20labels
+
+```{r}
+?labs
+```
+
+#### Axis limits
+
+A note on adjusting x- and y-axis limits: xlim() and ylim() will delete points outside of these ranges! To zoom in without deleting points use coord_cartesian(). See
+
+http://r-statistics.co/Complete-Ggplot2-Tutorial-Part1-With-R-Code.html#3.%20Adjusting%20the%20X%20and%20Y%20axis%20limits
+
+
+#### Also check out colors and themes,
+
+https://methodenlehre.github.io/SGSCLM-R-course/graphics-with-ggplot2.html#colors-and-themes
+
+http://r-statistics.co/Complete-Ggplot2-Tutorial-Part1-With-R-Code.html#5.%20Changing%20the%20color%20and%20size%20of%20points
+
+#### coordinate systems,
+
+https://r4ds.had.co.nz/data-visualisation.html#coordinate-systems
+
+#### position adjustments,
+
+https://r4ds.had.co.nz/data-visualisation.html#position-adjustments
+
+
+#### statistical transformations,
+
+https://r4ds.had.co.nz/data-visualisation.html#statistical-transformations
+
+#### and faceting.
+
+https://r4ds.had.co.nz/data-visualisation.html#facets
+
+
